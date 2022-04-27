@@ -1,0 +1,27 @@
+#Cython
+#scikit-image
+#scikit-learn
+#scipy
+#tensorboard==2.1.1
+#tensorflow-gpu
+#tensorboardX
+#tensorflow
+#tensorflow-estimator
+torch==1.5.0
+torchvision==0.6.0
+#tqdm==4.46.0
+#h5py==2.10.0
+#imageio==2.8.0
+#jax
+#-e git+git@github.com:deving09/kmeans_pytorch.git@75334c4a7bd558d33161d392bccead09d01ef198#egg=kmeans_pytorch
+#matplotlib
+#numpy
+#pandas==1.1.5
+#Pillow==7.0.0
+#POT==0.6.0
+#seaborn
+#six
+#streamlit
+xxhash==1.4.3
+numpy==1.18.2
+gdown
