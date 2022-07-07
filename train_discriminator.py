@@ -216,7 +216,9 @@ def main(args):
     feat_net = networks._load_base_model(args.net, layer_probe=args.layer_probe, pretrained=args.pretrained)
     feat_net.to(device)
 
-    disc_net = networks.DiscWrapper(args.disc_net, input_dims=feat_net.dims, output_dims=args.disc_classes)
+    disc_base = networks.DiscWrapper(args.disc_net, input_dims=feat_net.dims, output_dims=args.disc_classes)
+
+    disc_net = networks.DiscPackage(feat_net=feat_net, disc_net=disc_base)
     #logging.info(disc_net)
     logging.info(list(disc_net.state_dict().keys()))
     #1/0
@@ -227,7 +229,7 @@ def main(args):
     logging.info("%s device" % device)
     wandb.init(project="Discriminators", entity="deving09", config=train_args)
     
-    feat_net, disc_net = helpers.train_model(feat_net, disc_net, 
+    disc_net = helpers.train_disc_model(disc_net, 
             [base_ds_sampler, target_ds_sampler],
             train_args, device=device,
             build_labels=helpers.build_disc_labels,
@@ -243,7 +245,6 @@ def main(args):
     base_ds_name = base_ds[0].name
     target_ds_name = target_ds[0].name
     disc_title = "disc_%s" % "standard"
-    model_naming = "%s_%s_%s_%s_%s" % (args.net, args.layer_probe, args.pretrained, args.disc_net, args.batch_norm)
 
     disc_eval_token = helpers.token_maker(base_token, "standard_disc",
             base_ds, target_ds, sampler_gen,
@@ -251,19 +252,21 @@ def main(args):
             train_args,
             args.disc_classes
             )
+    
+    model_naming = "%s_%s_%s_%s_%s_%s" % (args.net, args.layer_probe, args.pretrained, args.disc_net, args.batch_norm, train_args["optimizer"]["opt_wt"])
+
 
     model_fn = os.path.join("models", "%s_%s_%s_%s_%s.pth" % (base_ds_name, 
         target_ds_name, disc_title, model_naming, disc_eval_token)) 
     
-    feat_model_fn = os.path.join("models", "feat_%s_%s_%s_%s_%s.pth" % (base_ds_name, 
-        target_ds_name, disc_title, model_naming, disc_eval_token)) 
+    #feat_model_fn = os.path.join("models", "feat_%s_%s_%s_%s_%s.pth" % (base_ds_name, 
+    #    target_ds_name, disc_title, model_naming, disc_eval_token)) 
 
-   # logging.info(disc_net)
+    # logging.info(disc_net)
     logging.info(list(disc_net.state_dict().keys()))
     
     torch.save({"model_state_dict": disc_net.state_dict()}, model_fn)
-    torch.save({"model_state_dict": feat_net.state_dict()}, feat_model_fn)
-
+    #torch.save({"model_state_dict": feat_net.state_dict()}, feat_model_fn)
 
 
     logging.info("Training Discriminator Finished")

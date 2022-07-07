@@ -104,6 +104,19 @@ class EnsembleModel(nn.Module):
 
         return new_logits, targets
 
+class DiscPackage(nn.Module):
+
+    def __init__(self, feat_net=None, disc_net=None):
+        super(DiscPackage, self).__init__()
+
+        self.feat_net = feat_net
+        self.disc_net = disc_net
+
+    def forward(self, x):
+        x = self.feat_net.disc_forward(x)
+        x = self.disc_net(x)
+        return x
+
 
 class DiscWrapper(nn.Module):
 
