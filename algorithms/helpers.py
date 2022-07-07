@@ -360,26 +360,31 @@ def buildConfig(config_fn):
 
 
 
-def build_optimizer(net, train_params=None, disc_net=None):
+def build_optimizer(net, train_params=None, discriminator=False):
      
     logging.info("Learning Rate: %f" % train_params["lr"])
 
 
-    if disc_net is None:
+    if discriminator is False:
+        print("just net")
         params = net.parameters()
+
     elif train_params["opt_wt"] == "full_opt":
+        print("full net")
         params = [
-                  {"params": net.parameters()},
-                  {"params": disc_net.parameters()}
+                  {"params": net.feat_net.parameters()},
+                  {"params": net.disc_net.parameters()}
                  ]
     elif train_params["opt_wt"] == "graded_opt":
+        print("graded net")
         params = [
-                  {"params": disc_net.parameters()},
-                  {"params": net.parameters(), "lr": 
+                  {"params": net.disc_net.parameters()},
+                  {"params": net.feat_net.parameters(), "lr": 
                       train_params["lr"] * train_params["graded_discount"]}
                  ]
     elif train_params["opt_wt"] == "disc_opt":
-        params = disc_net.parameters()
+        print("disc net")
+        params = net.disc_net.parameters()
     else:
         raise NotImplementedError
 
@@ -396,6 +401,161 @@ def build_optimizer(net, train_params=None, disc_net=None):
                 weight_decay=train_params["wd"])
 
     return optimizer
+
+
+
+def train_disc_model(disc_net, ds_iter, train_params, device=None, build_labels=None,
+        base_ds_name="base", target_ds_name="target", batch_norm=False):
+    """
+    Revized version of train model for simpler saving and loading
+    """
+    epochs = train_params["epochs"]
+    criterion = train_params["criterion"]
+    scheduler_params = train_params["scheduler"]
+
+    optimizer = build_optimizer(disc_net,
+            train_params=train_params["optimizer"],
+            discriminator=True)
+
+
+    scheduler = StepLR(optimizer,
+            step_size=scheduler_params["step_size"],
+            gamma=scheduler_params["gamma"])
+
+    cnt = 0
+    running_loss = 0.0
+    best_acc = 0.0
+    valid_loss = 0.0
+    acc = 0.0
+
+    ds_train = [ds.train for ds in ds_iter]
+    ds_val = [ds.val for ds in ds_iter]
+
+    for epoch in tqdm(range(epochs)):
+
+        if batch_norm:
+            #disc_net.train()
+            disc_net.feat_net.train()
+            disc_net.disc_net.train()
+        else:
+            #disc_net.eval()
+            disc_net.feat_net.eval()
+            disc_net.disc_net.eval()
+
+        for i, train_samples  in enumerate(zip(*ds_train)):
+            cnt += 1
+
+            if build_labels:
+                inputs, labels = build_labels(train_samples)
+            else:
+                inputs, labels = build_flatten_labels(train_samples)
+
+
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+
+            optimizer.zero_grad()
+
+            outputs = disc_net(inputs)
+            
+            loss = criterion(outputs, labels)
+
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            if cnt % 20 == 19:
+                wandb.log({
+                    "%s/%s" %(base_ds_name, target_ds_name) : {
+                        "loss": running_loss / 20,
+                        "epoch": epoch}
+                    }
+                    )
+
+                logging.info("[%d, %5d] loss: %.3f" %(epoch + 1, 
+                    cnt + 1,  running_loss / 20))
+                running_loss = 0.0
+
+
+
+        valid_loss = 0.0
+        acc = 0.0
+
+        # Validation Step
+        logging.info("Epoch: %d" % epoch)
+        acc_calc = AccuracyCalculator()
+        loss_calc = LossAggregator(criterion)
+
+        
+        disc_net.feat_net.eval()
+        disc_net.disc_net.eval()
+        #disc_net.eval()
+
+        with torch.no_grad():
+            for i, val_samples in enumerate(zip(*ds_val)):
+
+                if build_labels:
+                    test_inputs, targets = build_labels(val_samples)
+                else:
+                    test_inputs, targets = build_flatten_labels(val_samples)
+                
+
+                test_inputs = test_inputs.to(device)
+                targets = targets.to(device)
+
+                outputs = disc_net(test_inputs)
+                acc_calc.update(outputs, targets)
+                loss_calc.update(outputs, targets)
+
+            acc = acc_calc.results()
+            a_loss = loss_calc.results()
+
+            logging.info("Test Balance Acc: %f\t Loss: %f" % (acc, a_loss))
+
+            wandb.log({
+                    "%s Test Accuracy" % (target_ds_name) : acc,
+                    "%s Test Loss" % (target_ds_name) : a_loss
+                })
+
+           
+            if epoch % 5 == 0:
+                acc_calc = AccuracyCalculator()
+                loss_calc = LossAggregator(criterion)
+                
+                for i, train_samples  in enumerate(zip(*ds_train)):
+
+                    if build_labels:
+                        inputs, labels = build_labels(train_samples)
+                    else:
+                        inputs, labels = build_flatten_labels(train_samples)
+
+                    inputs = inputs.to(device)
+                    labels = labels.to(device)
+                    
+                    outputs = disc_net(inputs)
+                    
+                    acc_calc.update(outputs, labels)
+                    loss_calc.update(outputs, labels)
+                
+                acc = acc_calc.results()
+                a_loss = loss_calc.results()
+
+                logging.info("Train Balance Acc: %f\t Loss: %f" % (acc, a_loss))
+
+                wandb.log({
+                        "%s Train Accuracy" % (target_ds_name) : acc,
+                        "%s Train Loss" % (target_ds_name) : a_loss
+                    })
+
+
+        scheduler.step()
+
+
+
+
+    logging.info("Model finished training")
+
+    return disc_net
 
 
 def train_model(feat_net, disc_net, ds_iter, train_params, device=None, build_labels=None,
