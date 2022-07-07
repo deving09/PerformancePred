@@ -169,25 +169,15 @@ def main(args):
     target_ds_sampler = sampler_gen(target_ds[0], target_ds[1], [base_ds[0]])
 
     feat_net = networks._load_base_model(args.net, layer_probe=args.layer_probe, pretrained=args.pretrained)
-    #state_dict = torch.load(args.feat_wt)
-    #state_dict = {d.replace("module.",""): k for d, k in state_dict["model_state_dict"].items()}
-    #feat_net.load_state_dict(state_dict) #["model_state_dict"])
-    #logging.info(list(state_dict.keys()))
-    #1/0
     feat_net.eval()
     
     feat_net.to(device)
     
-    #disc_net = networks.DiscWrapper(args.disc_net, input_dims=feat_net.dims, output_dims=args.disc_classes)
     disc_base = networks.DiscWrapper(args.disc_net, input_dims=feat_net.dims, output_dims=args.disc_classes)
     disc_net = networks.DiscPackage(feat_net=feat_net, disc_net=disc_base)
     
-    logging.info(list(disc_net.state_dict().keys()))
     disc_state_dict = torch.load(args.disc_wt)
-    logging.info(list(disc_state_dict["model_state_dict"].keys()))
-    #1/0
     disc_state_dict = {d.replace("module.",""): k for d, k in disc_state_dict["model_state_dict"].items()}
-    logging.info(list(disc_state_dict.keys()))
     disc_net.load_state_dict(disc_state_dict)
     
     disc_net.eval()
